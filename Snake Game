@@ -1,1 +1,188 @@
-dim MNZ
+dim WIDTH, HEIGHT, TOTAL as integer
+dim snakeX, snakeY as Array[integer]
+dim snakeLength, foodX, foodY, direction, foodEaten as integer
+dim squares as Array[integer]
+dim squareContainers as Array[Container]
+dim speedCounter as integer
+dim speedLimit, speedMultiplier as double
+dim baseSpeed as double
+
+WIDTH = 70
+HEIGHT = 35
+TOTAL = WIDTH * HEIGHT
+
+squares.size = TOTAL
+snakeX.size = TOTAL
+snakeY.size = TOTAL
+
+sub OnInit()
+    ' Inicialización de variables del juego
+    snakeLength = 1
+    snakeX[0] = WIDTH / 2
+    snakeY[0] = HEIGHT / 2
+    direction = 1 ' 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda
+    foodEaten = 0
+    baseSpeed = 20 ' Velocidad inicial (se estableció en 40 como ejemplo)
+    speedMultiplier = 2.5 ' Incremento de velocidad en un 25%
+    speedLimit = baseSpeed
+    speedCounter = 0
+    spawnFood()
+    initializeField()
+    display()
+end sub
+
+sub initializeField()
+    ' Crear contenedores gráficos para la serpiente y la comida
+    deleteGeometry
+    update
+    deleteChildren
+
+    ' Crear el contenedor del campo de juego
+    dim blocksGroup as Container
+    blocksGroup = addContainer(TL_DOWN)
+
+    ' Crear contenedores para cada cuadrado del campo de juego
+    for i = 0 to HEIGHT - 1
+        for j = 0 to WIDTH - 1
+            dim b as Container
+            b = blocksGroup.addContainer(TL_DOWN)
+            b.createMaterial
+            b.name = "f_" & j & "_" & i
+            b.createGeometry("BUILT_IN*GEOM*Rectangle")
+            b.scaling.xyz = 0.1
+            b.position.x = (j - WIDTH / 2.0 + 0.5) * 10.0
+            b.position.y = - (i - HEIGHT / 2.0 - 1.0) * 10.0
+			b.material.diffuse = CColor(255, 0, 0)
+            squareContainers.push(b)
+        next
+    next
+    
+    ' Crear los bordes del campo de juego
+    for i = 0 to WIDTH - 1
+        squares[i] = 3 ' Borde superior
+        squares[(HEIGHT - 1) * WIDTH + i] = 3 ' Borde inferior
+    next
+    for i = 0 to HEIGHT - 1
+        squares[i * WIDTH] = 3 ' Borde izquierdo
+        squares[i * WIDTH + WIDTH - 1] = 3 ' Borde derecho
+    next
+end sub
+
+sub display()
+    dim i, index as integer
+    dim fc as Container
+
+    ' Limpiar el campo de juego
+    for i = 0 to TOTAL - 1
+        squares[i] = 0
+    next
+    
+    ' Redibujar los bordes del campo de juego
+    for i = 0 to WIDTH - 1
+        squares[i] = 3 ' Borde superior
+        squares[(HEIGHT - 1) * WIDTH + i] = 3 ' Borde inferior
+    next
+    for i = 0 to HEIGHT - 1
+        squares[i * WIDTH] = 3 ' Borde izquierdo
+        squares[i * WIDTH + WIDTH - 1] = 3 ' Borde derecho
+    next
+
+    ' Marcar la posición de la serpiente
+    for i = 0 to snakeLength - 1
+        squares[snakeY[i] * WIDTH + snakeX[i]] = 1
+    next
+
+    ' Marcar la posición de la comida
+    squares[foodY * WIDTH + foodX] = 2
+
+    ' Actualizar la visualización de cada cuadrado
+    for i = 0 to TOTAL - 1
+        fc = squareContainers[i]
+        if squares[i] = 0 then
+            fc.active = false
+        else
+            fc.active = true
+            if squares[i] = 1 then
+                fc.material.diffuse = CColor(0, 255, 0) ' Color de la serpiente
+            elseif squares[i] = 2 then
+                fc.material.diffuse = CColor(255, 255, 0) ' Color de la comida
+            elseif squares[i] = 3 then
+                fc.material.diffuse = CColor(0, 125, 250) ' Color del borde
+            end if
+        end if
+    next
+end sub
+
+sub spawnFood()
+    ' Generar una nueva posición aleatoria para la comida
+    do
+        foodX = random(WIDTH)
+        foodY = random(HEIGHT)
+    loop while squares[foodY * WIDTH + foodX] = 1 or squares[foodY * WIDTH + foodX] = 3
+end sub
+
+sub OnKeyDown(keyCode as integer)
+    ' Cambiar la dirección de la serpiente basado en la tecla presionada
+    if keyCode = KEY_UP and direction <> 2 then
+        direction = 0
+    elseif keyCode = KEY_RIGHT and direction <> 3 then
+        direction = 1
+    elseif keyCode = KEY_DOWN and direction <> 0 then
+        direction = 2
+    elseif keyCode = KEY_LEFT and direction <> 1 then
+        direction = 3
+    end if
+end sub
+
+sub OnExecPerField()
+    dim newX, newY, i as integer
+
+    ' Controlar la velocidad de la serpiente
+    speedCounter++
+    if speedCounter < speedLimit then
+        exit sub
+    end if
+    speedCounter = 0
+
+    ' Calcular la nueva posición de la cabeza de la serpiente
+    newX = snakeX[0]
+    newY = snakeY[0]
+
+    if direction = 0 then
+        newY--
+    elseif direction = 1 then
+        newX++
+    elseif direction = 2 then
+        newY++
+    elseif direction = 3 then
+        newX--
+    end if
+
+    ' Verificar colisiones con las paredes y el cuerpo de la serpiente
+    if newX < 0 or newX >= WIDTH or newY < 0 or newY >= HEIGHT or squares[newY * WIDTH + newX] = 1 or squares[newY * WIDTH + newX] = 3 then
+        OnInit() ' Reiniciar el juego en caso de colisión
+        exit sub
+    end if
+
+    ' Verificar colisión con la comida
+    if newX = foodX and newY = foodY then
+        snakeLength++ ' Incrementar la longitud de la serpiente
+        foodEaten++
+        if foodEaten mod 5 = 0 then
+            speedLimit = speedLimit / speedMultiplier ' Aumentar la velocidad en un 25%
+        end if
+        spawnFood() ' Generar nueva comida
+    end if
+
+    ' Mover el cuerpo de la serpiente
+    for i = snakeLength - 1 to 1 step -1
+        snakeX[i] = snakeX[i - 1]
+        snakeY[i] = snakeY[i - 1]
+    next
+
+    ' Actualizar la posición de la cabeza de la serpiente
+    snakeX[0] = newX
+    snakeY[0] = newY
+
+    display() ' Actualizar la visualización del juego
+end sub
