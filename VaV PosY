@@ -1,1 +1,201 @@
-Dim candidatos As Array[Integer]
+' === Declaración de Variables ===
+dim cands, old_Pos, indices as Array[Integer]
+dim posY, target_Y as Array[Double]
+dim col_Actual as Array[Vertex]
+dim anim_Col,fase_ascenso as Array[Boolean]
+
+dim num_Cands, current as Integer
+dim cands_Map, cands_Send as StringMap
+
+dim todosCero as Boolean = true
+dim velocidad as Double = 15 ' Cuanto mayor, más rápido (ajustable)
+
+num_Cands = 4
+
+' === Inicialización de Parámetros ===
+sub OnInitParameters()
+    target_Y.clear()
+    col_Actual.clear()
+    anim_Col.clear()
+    cands.clear()
+    old_Pos.clear()
+    indices.clear()
+	fase_ascenso.clear()
+
+    for i = 0 to num_Cands - 1
+        ' Registrar votos y contenedores asociados
+        RegisterParameterInt("cand" & CStr(i+1), "CAND" & CStr(i+1), 0, 0, 1000)
+        RegisterParameterContainer("c_posY" & CStr(i+1), "CPOS" & CStr(i+1))
+        RegisterParameterContainer("voto" & CStr(i+1), "VOTO" & CStr(i+1))
+
+        ' Inicializar arrays
+        cands.push(0)
+        old_Pos.push(i)
+        target_Y.push(0.0)
+        anim_Col.push(false)
+		fase_ascenso.push(true)
+        
+        ' Crear vertex color base manualmente
+        dim v as Vertex
+        v.x = 0.84
+        v.y = 0.84
+        v.z = 0.88
+        col_Actual.push(v)
+    next
+end sub
+
+' === Al cambiar cualquier parámetro ===
+sub OnParameterChanged(parameterName as String)
+    ' Leer votos y actualizar visualmente
+    for i = 0 to num_Cands - 1
+        dim nuevoValor = GetParameterInt("cand" & CStr(i+1))
+
+        ' Detectar si hubo cambio para animar color
+        if cands[i] <> nuevoValor then
+            anim_Col[i] = true
+			fase_ascenso[i] = true ' empezar subiendo
+        end if
+        cands[i] = nuevoValor
+
+        GetParameterContainer("voto" & CStr(i+1)).geometry.text = CStr(cands[i])
+    next
+
+    ' Crear y ordenar índice de candidatos
+    indices.clear()
+    for i = 0 to num_Cands - 1
+        indices.push(i)
+    next
+
+    indices.sort(null, "compararCandidatos")
+    cands_Send.Clear()
+
+    ' Posiciones Y según ranking    
+    posY.clear()
+    posY.push(-35)
+    posY.push(-72.5)
+    posY.push(-110)
+    posY.push(-147.5)
+
+    ' Aplicar nuevas posiciones y z
+    for j = 0 to num_Cands - 1
+        dim idx = indices[j]
+        target_Y[idx] = posY[j]
+        old_Pos[idx] = j
+
+        dim cont = GetParameterContainer("c_posY" & CStr(idx+1))
+        select case j
+            case 0
+                cont.position.z = 7.5
+            case 1
+                cont.position.z = 5
+            case 2
+                cont.position.z = 2.5
+            case 3
+                cont.position.z = 0
+        end select
+    next
+end sub
+
+' === Función para comparar candidatos ===
+function compararCandidatos(a as Integer, b as Integer) as Integer
+    todosCero = true
+    for i = 0 to num_Cands - 1
+        if cands[i] <> 0 then
+            todosCero = false
+            exit for
+        end if
+    next
+
+    if todosCero then
+        if a < b then
+            compararCandidatos = -1
+        else
+            compararCandidatos = 1
+        end if
+        exit function
+    end if
+
+    dim votosA = cands[a]
+    dim votosB = cands[b]
+
+    if votosA > votosB then
+        compararCandidatos = -1
+    elseif votosA < votosB then
+        compararCandidatos = 1
+    else
+        if old_Pos[a] < old_Pos[b] then
+            compararCandidatos = -1
+        else
+            compararCandidatos = 1
+        end if
+    end if
+end function
+
+' === Ejecutado cada frame ===
+sub OnExecPerField()
+    for i = 0 to num_Cands - 1
+        dim cont = GetParameterContainer("c_posY" & CStr(i+1))
+        dim actualY = cont.position.y
+        dim destinoY = target_Y[i]
+
+        dim delta = destinoY - actualY
+
+        ' Mover suavemente hacia destino Y
+        if abs(delta) > 0.1 then
+            cont.position.y = actualY + (delta / velocidad)
+        else
+            cont.position.y = destinoY
+        end if
+
+        ' Animación de color
+        animarColor(i)
+    next
+end sub
+
+' === Animar color desde base a target y volver ===
+sub animarColor(i as Integer)
+    dim velocidadColor as Double = 5.0
+    dim cont = GetParameterContainer("c_posY" & CStr(i+1))
+
+    if anim_Col[i] then
+        dim baseR = 0.84, baseG = 0.84, baseB = 0.88
+        dim targetR = 0.98, targetG = 0.88, targetB = 0.09
+
+        dim r = col_Actual[i].x
+        dim g = col_Actual[i].y
+        dim b = col_Actual[i].z
+
+        if fase_ascenso[i] then
+            ' Fase ascenso: del base al amarillo
+            r = r + (targetR - r) / velocidadColor
+            g = g + (targetG - g) / velocidadColor
+            b = b + (targetB - b) / velocidadColor
+
+            ' Si ya está suficientemente cerca del target, cambiar de fase
+            if abs(r - targetR) < 0.01 and abs(g - targetG) < 0.01 and abs(b - targetB) < 0.01 then
+                fase_ascenso[i] = false
+            end if
+        else
+            ' Fase descenso: volver al color base
+            r = r + (baseR - r) / velocidadColor
+            g = g + (baseG - g) / velocidadColor
+            b = b + (baseB - b) / velocidadColor
+
+            if abs(r - baseR) < 0.01 and abs(g - baseG) < 0.01 and abs(b - baseB) < 0.01 then
+                r = baseR
+                g = baseG
+                b = baseB
+                anim_Col[i] = false
+            end if
+        end if
+
+        dim newColor as Vertex
+        newColor.x = r
+        newColor.y = g
+        newColor.z = b
+
+        col_Actual[i] = newColor
+        cont.material.color.rgb = newColor
+    end if
+end sub
+
