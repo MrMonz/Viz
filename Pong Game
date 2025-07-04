@@ -1,0 +1,267 @@
+' === Registro de parámetros para puntaje ===
+sub OnInitParameters()
+    for i = 1 to 2
+        'RegisterParameterContainer("pto" & i, "PTOS" & i)
+    next
+end sub
+
+' === Variables globales ===
+dim WIDTH, HEIGHT, TOTAL as integer
+dim squares as Array[integer]
+dim squareContainers as Array[Container]
+
+dim rightPaddleY, rightPaddleDY as integer
+dim leftPaddleY as integer
+dim paddleHeight as integer
+paddleHeight = 5
+
+dim ballCont as Container
+dim ballX, ballY, ballDX, ballDY as double
+
+dim gameStarted as boolean
+
+dim scoreLeft as integer
+dim scoreRight as integer
+
+dim pto1, pto2 as Container  ' contenedores para mostrar puntaje
+
+WIDTH = 30
+HEIGHT = 20
+TOTAL = WIDTH * HEIGHT
+
+squares.size = TOTAL
+
+' === Inicialización principal ===
+sub OnInit()
+    deleteGeometry
+    update
+    deleteChildren
+
+    ' Obtener contenedores de puntaje
+    pto1 = GetParameterContainer("pto1")
+    pto2 = GetParameterContainer("pto2")
+
+    gameStarted = false
+    scoreLeft = 0
+    scoreRight = 0
+
+    dim blocksGroup as Container
+    blocksGroup = addContainer(TL_DOWN)
+
+    dim i, j, index as integer
+    dim block as Container
+
+    for i = 0 to HEIGHT - 1
+        for j = 0 to WIDTH - 1
+            index = i * WIDTH + j
+
+            block = blocksGroup.addContainer(TL_DOWN)
+            block.name = "f_" & j & "_" & i
+            block.createMaterial
+            block.createGeometry("BUILT_IN*GEOM*Cube")
+            block.scaling.xyz = 0.1
+            block.position.x = (j - WIDTH / 2.0 + 0.5) * 10.0
+            block.position.y = - (i - HEIGHT / 2.0 - 1.0) * 10.0
+            block.material.diffuse.SetRGB8(0, 0, 0)
+
+            squareContainers.push(block)
+        next
+    next
+
+    drawBorders()
+    createPaddles()
+    createBall()
+
+    ' Mostrar puntajes iniciales
+    if pto1 <> null then pto1.geometry.text = CStr(scoreLeft)
+    if pto2 <> null then pto2.geometry.text = CStr(scoreRight)
+end sub
+
+sub drawBorders()
+    dim i as integer
+    for i = 0 to WIDTH - 1
+        squares[i] = 3
+        squares[(HEIGHT - 1) * WIDTH + i] = 3
+    next
+    for i = 0 to HEIGHT - 1
+        squares[i * WIDTH] = 3
+        squares[i * WIDTH + WIDTH - 1] = 3
+    next
+    updateDisplay()
+end sub
+
+sub createPaddles()
+    dim i, index as integer
+
+    rightPaddleY = 9 - paddleHeight \ 2
+    leftPaddleY  = 9 - paddleHeight \ 2
+
+    for i = 0 to paddleHeight - 1
+        index = (leftPaddleY + i) * WIDTH + 2
+        squares[index] = 4
+        index = (rightPaddleY + i) * WIDTH + 27
+        squares[index] = 4
+    next
+
+    updateDisplay()
+end sub
+
+sub createBall()
+    ballCont = Scene.FindContainer("Ball")
+    if ballCont = null then
+        ballCont = this.AddContainer(TL_DOWN)
+        ballCont.name = "Ball"
+        ballCont.createGeometry("BUILT_IN*GEOM*Cube")
+        ballCont.createMaterial()
+        ballCont.scaling.xyz = 0.1
+        ballCont.material.diffuse.SetRGB8(255, 165, 0)
+    end if
+
+    ballX = WIDTH / 2.0
+    ballY = HEIGHT / 2.0
+    ballDX = 0
+    ballDY = 0
+
+    updateBallPosition()
+end sub
+
+sub updateBallPosition()
+    ballCont.position.x = (ballX - WIDTH / 2.0 + 0.5) * 10.0
+    ballCont.position.y = - (ballY - HEIGHT / 2.0 - 1.0) * 10.0
+end sub
+
+sub updateDisplay()
+    dim i as integer
+    dim block as Container
+
+    for i = 0 to TOTAL - 1
+        block = squareContainers[i]
+        if squares[i] = 3 then
+            block.active = true
+            block.material.diffuse.SetRGB8(0, 125, 255)
+        elseif squares[i] = 4 then
+            block.active = true
+            block.material.diffuse.SetRGB8(255, 255, 255)
+        else
+            block.active = false
+        end if
+    next
+end sub
+
+sub OnKeyDown(keyCode as integer)
+    if keyCode = KEY_UP then
+        rightPaddleDY = -1
+    elseif keyCode = KEY_DOWN then
+        rightPaddleDY = 1
+    end if
+
+    if not gameStarted then
+        gameStarted = true
+        if Random(2) = 0 then
+            ballDX = 0.2
+        else
+            ballDX = -0.2
+        end if
+        if Random(2) = 0 then
+            ballDY = 0.1
+        else
+            ballDY = -0.1
+        end if
+    end if
+end sub
+
+sub OnKeyUp(keyCode as integer)
+    if keyCode = KEY_UP or keyCode = KEY_DOWN then
+        rightPaddleDY = 0
+    end if
+end sub
+
+sub OnExecPerField()
+    dim i, index as integer
+
+    ' -- Borrar paletas anteriores
+    for i = 0 to paddleHeight - 1
+        index = (rightPaddleY + i) * WIDTH + 27
+        if index >= 0 and index < TOTAL then squares[index] = 0
+        index = (leftPaddleY + i) * WIDTH + 2
+        if index >= 0 and index < TOTAL then squares[index] = 0
+    next
+
+    ' -- Mover paleta derecha
+    rightPaddleY = rightPaddleY + rightPaddleDY
+    if rightPaddleY < 1 then rightPaddleY = 1
+    if rightPaddleY > HEIGHT - paddleHeight - 1 then rightPaddleY = HEIGHT - paddleHeight - 1
+
+    ' -- Mover paleta izquierda IA
+    if gameStarted then
+        if int(ballY) < leftPaddleY then
+            leftPaddleY = leftPaddleY - 1
+        elseif int(ballY) > leftPaddleY + paddleHeight - 1 then
+            leftPaddleY = leftPaddleY + 1
+        end if
+    end if
+    if leftPaddleY < 1 then leftPaddleY = 1
+    if leftPaddleY > HEIGHT - paddleHeight - 1 then leftPaddleY = HEIGHT - paddleHeight - 1
+
+    ' -- Dibujar paletas con nuevo valor en squares
+    for i = 0 to paddleHeight - 1
+        squares[(rightPaddleY + i) * WIDTH + 27] = 4
+        squares[(leftPaddleY + i) * WIDTH + 2] = 4
+    next
+
+    ' -- Rebote izquierda
+    if int(ballX) = 2 then
+        for i = 0 to paddleHeight - 1
+            if int(ballY) = leftPaddleY + i then
+                ballX = 3.0
+                ballDX = abs(ballDX) + 0.02
+            end if
+        next
+    end if
+
+    ' -- Rebote derecha
+    if int(ballX) = 26 then
+        for i = 0 to paddleHeight - 1
+            if int(ballY) = rightPaddleY + i then
+                ballX = 26.0
+                ballDX = -abs(ballDX) - 0.02
+            end if
+        next
+    end if
+
+    ' -- Mover pelota si inició
+    if gameStarted then
+        ballX = ballX + ballDX
+        ballY = ballY + ballDY
+
+        ' Rebote vertical
+        if ballY < 1 then
+            ballY = 1
+            ballDY = -ballDY
+        elseif ballY > HEIGHT - 2 then
+            ballY = HEIGHT - 2
+            ballDY = -ballDY
+        end if
+
+        ' Pérdida lateral
+        if ballX < 1 or ballX > WIDTH - 2 then
+            ' Incrementar puntaje
+            if ballX < 1 then
+                scoreRight = scoreRight + 1
+                if pto2 <> null then pto2.geometry.text = CStr(scoreRight)
+            else
+                scoreLeft = scoreLeft + 1
+                if pto1 <> null then pto1.geometry.text = CStr(scoreLeft)
+            end if
+            ' Reiniciar pelota
+            ballX = WIDTH / 2
+            ballY = HEIGHT / 2
+            gameStarted = false
+            ballDX = 0
+            ballDY = 0
+        end if
+    end if
+
+    updateBallPosition()
+    updateDisplay()
+end sub
